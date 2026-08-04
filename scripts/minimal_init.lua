@@ -7,13 +7,23 @@
 
 vim.opt.rtp:prepend(vim.fn.getcwd())
 
--- Bootstrap plenary.nvim from the vendor pack if present; log a hint
--- rather than crash if it isn't.
-local plenary_dir = vim.fn.stdpath("data") .. "/site/pack/vendor/start/plenary.nvim"
-if vim.fn.isdirectory(plenary_dir) == 0 then
-  vim.notify(
-    "plenary.nvim not found at " .. plenary_dir .. "; install it before running tests",
-    vim.log.levels.ERROR
-  )
+-- Bootstrap plenary.nvim. Check the two common install locations:
+-- the pack/vendor/start path (CI convention) and lazy.nvim's dir
+-- (local dev convention).
+local candidates = {
+	vim.fn.stdpath("data") .. "/site/pack/vendor/start/plenary.nvim",
+	vim.fn.stdpath("data") .. "/lazy/plenary.nvim",
+}
+
+local found
+for _, dir in ipairs(candidates) do
+	if vim.fn.isdirectory(dir) == 1 then
+		vim.opt.rtp:prepend(dir)
+		found = dir
+		break
+	end
 end
-vim.opt.rtp:prepend(plenary_dir)
+
+if not found then
+	vim.notify("plenary.nvim not found in any of: " .. table.concat(candidates, ", "), vim.log.levels.ERROR)
+end
