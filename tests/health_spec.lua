@@ -32,8 +32,9 @@ describe("operator.health", function()
 	end)
 
 	it("does not error", function()
-		assert.has_no.errors(function()
-			health.check()
-		end)
+		-- If health.check() raises, the test fails naturally via the
+		-- unhandled error. neospec's luassert does not expose
+		-- plenary.busted's `assert.has_no.errors` sugar.
+		health.check()
 	end)
 end)
