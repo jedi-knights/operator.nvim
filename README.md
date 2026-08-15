@@ -1,7 +1,17 @@
 # operator.nvim
 
+[![CI](https://github.com/jedi-knights/operator.nvim/actions/workflows/ci.yml/badge.svg)](https://github.com/jedi-knights/operator.nvim/actions/workflows/ci.yml)
+
 Define reusable Vim operators from Lua without hand-rolling the
 `operatorfunc` / `g@` / `<Plug>` boilerplate every time.
+
+Define once, get the full operator surface for free: `guiw`, `guap`,
+`gU$`, visual + `gu`, and `.`-repeat — the same shape tpope's operator
+plugins ship with.
+
+**Requirements:** Neovim 0.10+. Optional: [vim-repeat](https://github.com/tpope/vim-repeat) enables `.`-repeat (silent no-op if not installed).
+
+**Status:** pre-v0.1.0. Public API is expected to stabilize with the v0.1.0 tag; treat as experimental until then.
 
 ## Install
 
