@@ -1,0 +1,115 @@
+*operator.txt*  Define reusable Vim operators from Lua
+
+Author:   Omar Crosby <https://github.com/ocrosby>
+License:  MIT
+
+==============================================================================
+CONTENTS                                                    *operator-contents*
+
+  1. Introduction ......................... |operator-introduction|
+  2. Quick start .......................... |operator-quick-start|
+  3. API .................................. |operator-api|
+     3.1. operator.define() ............... |operator.define()|
+  4. Range object ......................... |operator-range|
+  5. Dot repeat ........................... |operator-dot-repeat|
+  6. Health ............................... |operator-health|
+
+==============================================================================
+1. Introduction                                         *operator-introduction*
+
+operator.nvim registers reusable Vim operators from Lua without hand-rolling
+the 'operatorfunc' + |g@| + `<Plug>` dance every time. It emits a `<Plug>`
+mapping for normal and visual mode; the caller binds the user-facing key so
+the plugin never claims a keystroke.
+
+No |setup()| call is required. The API is stateless.
+
+==============================================================================
+2. Quick start                                           *operator-quick-start*
+>lua
+    local operator = require("operator")
+
+    operator.define("uppercase", {
+      desc = "uppercase over motion",
+      callback = function(range)
+        local lines = vim.api.nvim_buf_get_lines(
+          0, range.start.row - 1, range.finish.row, false)
+        for i, line in ipairs(lines) do
+          lines[i] = string.upper(line)
+        end
+        vim.api.nvim_buf_set_lines(
+          0, range.start.row - 1, range.finish.row, false, lines)
+      end,
+      dot_repeat = true,
+    })
+
+    vim.keymap.set({ "n", "x" }, "gu", "<Plug>(operator-uppercase)")
+<
+Then `guiw`, `guap`, `gU$`, visual + `gu`, and `.` (repeat) all work.
+
+==============================================================================
+3. API                                                           *operator-api*
+
+------------------------------------------------------------------------------
+3.1. operator.define({name}, {opts})                          *operator.define()*
+
+Register an operator named {name} and emit a `<Plug>(operator-{name})` mapping
+for normal and visual mode.
+
+Parameters: ~
+  {name}  (string) Unique identifier. The `<Plug>` mapping is derived
+          verbatim: `define("foo")` yields `<Plug>(operator-foo)`.
+
+  {opts}  (table)
+    - `callback` (function, required)
+        Called after the motion resolves. Receives one argument, a
+        |operator-range| table.
+    - `desc` (string, optional)
+        Mapping description shown by |maparg()| and which-key-style UIs.
+        Defaults to `"operator: <name>"`.
+    - `dot_repeat` (boolean, optional)
+        Opt into |operator-dot-repeat|. Defaults to `false`.
+
+Errors on missing {name}, empty {name}, missing {opts}, or non-function
+callback.
+
+==============================================================================
+4. Range object                                                *operator-range*
+
+The `callback` receives a table:
+>
+    {
+      motion_type = "char" | "line" | "block",
+      start       = { row = 1-indexed, col = 0-indexed },
+      finish      = { row = 1-indexed, col = 0-indexed },
+    }
+<
+Rows are 1-indexed to match |line()| and |nvim_win_set_cursor()|. Columns are
+0-indexed to match |col()| in operator-pending mode and the `'[` / `']` marks
+Vim sets before calling 'operatorfunc'.
+
+`motion_type` is Vim's own classification of the motion:
+
+  "char"   a character-wise motion, e.g. `iw`, `l`, `f)`
+  "line"   a line-wise motion, e.g. `_`, `2j`, `V`
+  "block"  a block-wise visual selection, e.g. `<C-v>` + motion
+
+==============================================================================
+5. Dot repeat                                             *operator-dot-repeat*
+
+Pass `dot_repeat = true` to have operator.nvim call `repeat#set()` after your
+callback runs, so the |.| command re-invokes the operator with the same count.
+
+Requires vim-repeat: https://github.com/tpope/vim-repeat
+
+If vim-repeat is not installed, the call is a silent no-op — your operator
+still works, `.` just falls back to Vim's built-in repeat behaviour.
+
+==============================================================================
+6. Health                                                     *operator-health*
+
+Run |:checkhealth| operator to verify vim-repeat availability. The check is
+informational only: an operator defined without `dot_repeat = true` works
+regardless of whether vim-repeat is installed.
+
+ vim:tw=78:ts=8:noet:ft=help:norl:
