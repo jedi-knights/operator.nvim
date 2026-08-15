@@ -6,7 +6,7 @@ local M = {}
 
 --- @return boolean should_load true when the plugin can run here
 function M.should_load()
-  return true
+	return true
 end
 
 return M
