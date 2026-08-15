@@ -3,7 +3,7 @@
 -- lua/operator/ module so :source and :Lazy reload behave.
 
 if vim.g.loaded_operator then
-  return
+	return
 end
 vim.g.loaded_operator = 1
 

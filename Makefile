@@ -6,11 +6,17 @@ test:
 		-c "PlenaryBustedDirectory tests/ { minimal_init = 'scripts/minimal_init.lua' }"
 
 lint:
-	@command -v stylua > /dev/null && stylua --check . \
-		|| echo "install stylua: https://github.com/JohnnyMorganz/StyLua"
+	@if ! command -v stylua > /dev/null; then \
+		echo "install stylua: https://github.com/JohnnyMorganz/StyLua"; \
+		exit 1; \
+	fi
+	stylua --check .
 
 format:
-	@command -v stylua > /dev/null && stylua . \
-		|| echo "install stylua: https://github.com/JohnnyMorganz/StyLua"
+	@if ! command -v stylua > /dev/null; then \
+		echo "install stylua: https://github.com/JohnnyMorganz/StyLua"; \
+		exit 1; \
+	fi
+	stylua .
 
 check: lint test
