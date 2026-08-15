@@ -17,7 +17,7 @@ No `setup()` call required — the API is stateless.
 ```lua
 local operator = require("operator")
 
-operator.define("myplugin.uppercase", {
+operator.define("uppercase", {
   desc = "uppercase over motion",
   callback = function(range)
     -- range.motion_type is "char", "line", or "block"
@@ -32,7 +32,7 @@ operator.define("myplugin.uppercase", {
 })
 
 -- Bind whatever key you want; the plugin never claims user keys.
-vim.keymap.set({ "n", "x" }, "gu", "<Plug>(myplugin-uppercase)")
+vim.keymap.set({ "n", "x" }, "gu", "<Plug>(operator-uppercase)")
 ```
 
 Then `guiw`, `guap`, `gU$`, visual + `gu`, and `.` (repeat) all work.
