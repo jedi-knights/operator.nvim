@@ -18,8 +18,8 @@ describe("operator.define", function()
 	it("registers a <Plug> mapping in normal and visual mode", function()
 		operator.define("test.mapping", { callback = function() end })
 
-		assert.is_not.equal("", vim.fn.maparg("<Plug>(operator-test.mapping)", "n"))
-		assert.is_not.equal("", vim.fn.maparg("<Plug>(operator-test.mapping)", "x"))
+		assert.not_equals("", vim.fn.maparg("<Plug>(operator-test.mapping)", "n"))
+		assert.not_equals("", vim.fn.maparg("<Plug>(operator-test.mapping)", "x"))
 	end)
 
 	-- Trigger the <Plug> mapping via a temporary user-facing key.

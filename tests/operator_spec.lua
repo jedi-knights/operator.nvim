@@ -14,6 +14,6 @@ describe("operator", function()
 		local mod = require("operator")
 		local fake = { notify = function() end }
 		mod.setup({}, { notifier = fake })
-		assert.are.equal(fake, mod.deps.notifier)
+		assert.equals(fake, mod.deps.notifier)
 	end)
 end)

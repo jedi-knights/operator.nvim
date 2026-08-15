@@ -1,0 +1,8 @@
+# neospec reads this on `neospec run`. See:
+# https://github.com/jedi-knights/neospec
+
+# init_file runs before neospec installs its coverage hook. Our
+# scripts/minimal_init.lua prepends the repo root to runtimepath so
+# `require("operator")` resolves to `lua/operator/init.lua` inside the
+# sandboxed Neovim neospec spawns.
+init_file = "scripts/minimal_init.lua"
