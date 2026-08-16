@@ -13,20 +13,18 @@ local M = {}
 --- Registry of defined operators, keyed by name.
 --- Stored on the module so the dispatcher (called via v:lua) can find
 --- an entry after the operator-pending motion resolves.
---- @type table<string, { callback: fun(range: table), dot_repeat: boolean }>
+--- @type table<string, { callback: fun(range: table) }>
 M._registry = {}
 
 --- Name of the operator currently being applied. Set by the <Plug>
 --- entry-mapping just before `g@`; read by `_call` when the motion
---- resolves; cleared afterwards. A single scalar is sufficient because
---- Vim can only be evaluating one operator at a time.
+--- resolves. **Intentionally not cleared afterwards** so native `.`
+--- (which re-invokes operatorfunc with the last motion applied to the
+--- new cursor position) fires the same operator again. A single scalar
+--- is sufficient because Vim can only be evaluating one operator at a
+--- time; the next `<Plug>` invocation overwrites it.
 --- @type string?
 M._pending_name = nil
-
---- Prior value of `operatorfunc`, saved so we restore it after our
---- callback runs. Prevents us from stomping another plugin's operator.
---- @type string?
-M._prev_opfunc = nil
 
 --- Build the range table the callback receives.
 --- @param motion_type string One of "char", "line", "block" (from operatorfunc); or "v", "V", "\22" (from visualmode()).
@@ -42,13 +40,17 @@ local function build_range(motion_type)
 end
 
 --- Entry point invoked by the <Plug> mapping just before `g@`. Records
---- which operator is pending and saves the prior operatorfunc so the
---- dispatcher can restore it.
+--- which operator is pending and installs our dispatcher as
+--- `operatorfunc`. We deliberately do NOT save the prior value so we
+--- can restore it — every operator plugin in the ecosystem (commentary,
+--- surround, unimpaired) leaves operatorfunc set on the last op that
+--- fired, because that is what makes native `.` re-run the same
+--- operator. Save/restore looks polite but silently breaks the
+--- ship-criterion `.` repeat.
 --- @param name string
 local function begin(name)
 	assert(M._registry[name], "operator: no operator registered under name " .. tostring(name))
 	M._pending_name = name
-	M._prev_opfunc = vim.go.operatorfunc
 	vim.go.operatorfunc = "v:lua.require'operator'._call"
 end
 
@@ -57,12 +59,11 @@ end
 --- visualmode() type.
 --- @param motion_type string
 function M._call(motion_type)
+	-- Read but don't clear: native `.` re-invokes operatorfunc with the
+	-- last motion applied to the new cursor position, and we want that
+	-- re-invocation to fire the same operator. The next `<Plug>` call
+	-- overwrites _pending_name naturally.
 	local name = M._pending_name
-	M._pending_name = nil
-
-	vim.go.operatorfunc = M._prev_opfunc or ""
-	M._prev_opfunc = nil
-
 	if not name then
 		return
 	end
@@ -72,17 +73,25 @@ function M._call(motion_type)
 	end
 
 	entry.callback(build_range(motion_type))
-
-	if entry.dot_repeat then
-		pcall(function()
-			vim.fn["repeat#set"]("\\<Plug>(operator-" .. name .. ")", vim.v.count)
-		end)
-	end
+	-- No repeat#set call: our <Plug> mapping returns g@ (motion-agnostic
+	-- setup), and vim-repeat's replay would only re-issue <Plug> without
+	-- capturing the motion — leaving the operator hanging in op-pending.
+	-- Native `.` works via Vim's own change-repeat, which re-invokes
+	-- operatorfunc with the last motion applied to the new cursor
+	-- position; that requires operatorfunc to stay set (see the comment
+	-- on begin()). vim-repeat's `.` remap falls through to native `.`
+	-- when no active repeat sequence exists for the current changedtick,
+	-- so leaving repeat#set uncalled is the right choice.
 end
 
 --- Register an operator.
+---
+--- Native Vim `.` re-runs the operator with the last motion on the new
+--- cursor position — no `dot_repeat` opt-in required. See the comment
+--- on `begin()` for the mechanism.
+---
 --- @param name string Unique identifier; becomes `<Plug>(operator-<name>)`.
---- @param opts { callback: fun(range: table), desc: string?, dot_repeat: boolean? }
+--- @param opts { callback: fun(range: table), desc: string? }
 function M.define(name, opts)
 	assert(type(name) == "string" and #name > 0, "operator.define: name required")
 	assert(type(opts) == "table", "operator.define: opts required")
@@ -90,7 +99,6 @@ function M.define(name, opts)
 
 	M._registry[name] = {
 		callback = opts.callback,
-		dot_repeat = opts.dot_repeat == true,
 	}
 
 	local plug = "<Plug>(operator-" .. name .. ")"

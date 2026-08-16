@@ -12,17 +12,17 @@ function M.check()
 		vim.health.warn("operator would not load in this environment (detector.should_load returned false)")
 	end
 
-	-- vim-repeat is an optional peer. Users only need it if they call
-	-- define() with dot_repeat = true; without it, `.` still repeats
-	-- the operator (built-in Vim behavior), but the count and mapping
-	-- key won't be propagated through the <Plug> layer.
+	-- vim-repeat is optional. Native `.` re-runs our operator with the
+	-- last motion on the new cursor position because we leave
+	-- operatorfunc pointing at our dispatcher. vim-repeat's `.` remap
+	-- falls through to native `.` when there is no active repeat
+	-- sequence for the current changedtick — so users get correct `.`
+	-- behavior either way. The check stays as an info line so users can
+	-- confirm the peer is installed when they expect it.
 	if vim.fn.exists("*repeat#set") == 1 then
-		vim.health.ok("vim-repeat present — dot_repeat = true will propagate through <Plug>")
+		vim.health.info("vim-repeat present (optional peer — native `.` works either way)")
 	else
-		vim.health.info(
-			"vim-repeat not installed — dot_repeat = true is a silent no-op. "
-				.. "Install tpope/vim-repeat for count/mapping propagation on `.`"
-		)
+		vim.health.info("vim-repeat not installed (optional — native `.` works without it)")
 	end
 end
 

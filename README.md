@@ -9,7 +9,7 @@ Define once, get the full operator surface for free: `guiw`, `guap`,
 `gU$`, visual + `gu`, and `.`-repeat — the same shape tpope's operator
 plugins ship with.
 
-**Requirements:** Neovim 0.10+. Optional: [vim-repeat](https://github.com/tpope/vim-repeat) enables `.`-repeat (silent no-op if not installed).
+**Requirements:** Neovim 0.10+. No peer dependencies — native `.` re-runs the operator with the last motion on the new cursor position.
 
 **Status:** pre-v0.1.0. Public API is expected to stabilize with the v0.1.0 tag; treat as experimental until then.
 
@@ -38,7 +38,6 @@ operator.define("uppercase", {
     end
     vim.api.nvim_buf_set_lines(0, range.start.row - 1, range.finish.row, false, lines)
   end,
-  dot_repeat = true, -- opt-in vim-repeat integration; silent no-op if absent
 })
 
 -- Bind whatever key you want; the plugin never claims user keys.
@@ -56,7 +55,11 @@ Then `guiw`, `guap`, `gU$`, visual + `gu`, and `.` (repeat) all work.
   - `motion_type` — `"char"`, `"line"`, `"block"` (or a `visualmode()` char when triggered from visual).
   - `start`, `finish` — `{ row, col }`. `row` is 1-indexed, `col` is 0-indexed.
 - `opts.desc` (string, optional) — mapping description.
-- `opts.dot_repeat` (boolean, optional) — call `repeat#set` after the callback if [vim-repeat](https://github.com/tpope/vim-repeat) is installed. Silent no-op otherwise.
+
+`.` re-runs the operator with the last motion on the new cursor
+position automatically — the plugin leaves `operatorfunc` pointing at
+its dispatcher, which is what Vim's built-in change-repeat mechanism
+looks up. No `dot_repeat` opt-in required.
 
 ## License
 

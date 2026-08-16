@@ -53,30 +53,55 @@ describe("operator.define", function()
 		assert.is_table(received.finish)
 	end)
 
-	it("restores the prior operatorfunc after the callback runs", function()
+	it("leaves operatorfunc pointing at our dispatcher after firing", function()
+		-- Design decision (2026-08-16): we deliberately do NOT save +
+		-- restore the prior operatorfunc. Every operator plugin in the
+		-- ecosystem (commentary, surround, unimpaired) leaves its own
+		-- operatorfunc set on the last op that fired, because that is
+		-- what makes native `.` re-invoke the same operator with the
+		-- last motion applied to the new cursor position. A polite
+		-- save+restore silently breaks the ship-criterion `.` repeat.
 		vim.go.operatorfunc = "PriorFunc"
 
-		operator.define("test.restore", { callback = function() end })
+		operator.define("test.leave_opfunc", { callback = function() end })
 
-		trigger("test.restore")
+		trigger("test.leave_opfunc")
 
-		assert.equals("PriorFunc", vim.go.operatorfunc)
+		-- Our dispatcher is a v:lua callable; the exact string is an
+		-- implementation detail, but it must not be the prior value.
+		assert.not_equals("PriorFunc", vim.go.operatorfunc)
+		assert.is_truthy(vim.go.operatorfunc:match("operator"))
 	end)
 
-	it("silently no-ops dot_repeat when vim-repeat is absent", function()
-		-- vim-repeat is not vendored in the test env; the pcall around
-		-- repeat#set must swallow the resulting E117.
-		local called = false
-		operator.define("test.repeatable", {
-			dot_repeat = true,
-			callback = function()
-				called = true
+	it("native `.` re-runs the same operator with the last motion on the new cursor", function()
+		-- Load-bearing ship-criterion behaviour. `.` after g@iw re-issues
+		-- g@iw with the motion applied at the new cursor position. Works
+		-- because we leave operatorfunc + _pending_name in place — see
+		-- the comment on M._call. Guards against a future refactor that
+		-- re-introduces save/restore.
+		local calls = {}
+		vim.api.nvim_buf_set_lines(0, 0, -1, false, { "alpha beta", "gamma delta" })
+
+		operator.define("test.dot_native", {
+			callback = function(range)
+				local lines = vim.api.nvim_buf_get_lines(0, range.start.row - 1, range.finish.row, false)
+				for i, line in ipairs(lines) do
+					lines[i] = string.upper(line)
+				end
+				vim.api.nvim_buf_set_lines(0, range.start.row - 1, range.finish.row, false, lines)
+				table.insert(calls, range.start.row)
 			end,
 		})
 
-		trigger("test.repeatable")
+		vim.api.nvim_win_set_cursor(0, { 1, 0 })
+		trigger("test.dot_native", "iw")
+		vim.api.nvim_win_set_cursor(0, { 2, 0 })
+		vim.api.nvim_feedkeys(".", "x", false)
 
-		assert.is_true(called)
+		local buf = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+		assert.equals("ALPHA BETA", buf[1])
+		assert.equals("GAMMA DELTA", buf[2])
+		assert.equals(2, #calls)
 	end)
 
 	describe("motion shapes", function()
