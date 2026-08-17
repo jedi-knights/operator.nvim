@@ -78,16 +78,89 @@ tag; treat it as experimental until then.
 
 ## Installation
 
+There is no `setup()` call — the API is stateless. Instead, **your operator
+definitions are the configuration**, so they live wherever your plugin manager
+runs a plugin's config function.
+
+### lazy.nvim
+
+One file per plugin under `~/.config/nvim/lua/plugins/`, picked up by the
+`{ import = "plugins" }` spec that every lazy.nvim setup uses:
+
 ```lua
--- lazy.nvim
-{ "jedi-knights/operator.nvim" }
+-- ~/.config/nvim/lua/plugins/operator.lua
+return {
+  "jedi-knights/operator.nvim",
+  config = function()
+    local operator = require("operator")
+
+    operator.define("sort", {
+      desc = "sort lines over motion",
+      callback = function(range)
+        local lines = vim.api.nvim_buf_get_lines(0, range.start.row - 1, range.finish.row, false)
+        table.sort(lines)
+        vim.api.nvim_buf_set_lines(0, range.start.row - 1, range.finish.row, false, lines)
+      end,
+    })
+
+    vim.keymap.set({ "n", "x" }, "gs", "<Plug>(operator-sort)", { desc = "sort over motion" })
+  end,
+}
 ```
 
-No `setup()` call required — the API is stateless.
+Define as many operators as you like in that one `config` function — each call
+to `operator.define` is independent.
+
+### Lazy-loading on the key
+
+Add `keys` and the plugin stays off the startup path until you first press it:
+
+```lua
+-- ~/.config/nvim/lua/plugins/operator.lua
+return {
+  "jedi-knights/operator.nvim",
+  keys = { { "gs", mode = { "n", "x" }, desc = "sort over motion" } },
+  config = function()
+    -- same as above
+  end,
+}
+```
+
+This works with operators, which is not obvious: lazy.nvim intercepts `gs`,
+loads the plugin, then replays the key — and the operator still waits for its
+motion afterwards, so `gsip` resolves correctly on the very first press.
+
+### vim.pack (Neovim 0.12+)
+
+```lua
+-- ~/.config/nvim/init.lua
+vim.pack.add({ { src = "https://github.com/jedi-knights/operator.nvim" } })
+
+require("operator").define("sort", { --[[ ... ]] })
+vim.keymap.set({ "n", "x" }, "gs", "<Plug>(operator-sort)")
+```
+
+### Where this goes in a distribution
+
+Every lazy.nvim-based distribution takes the same spec table, so the rule is
+always the same: **your definitions go in the spec's `config` function.** Only
+the file path differs.
+
+| Distribution | Put the spec in |
+|---|---|
+| Plain lazy.nvim, LazyVim, AstroNvim | a new file under `~/.config/nvim/lua/plugins/` |
+| NvChad | the returned table in `~/.config/nvim/lua/plugins/init.lua` |
+| kickstart.nvim | inline in the `require("lazy").setup({ ... })` table in `init.lua` |
+| No plugin manager | anywhere sourced after the plugin is on `runtimepath` |
+
+These are each distribution's conventional location for a user plugin spec; if
+yours has been customized, the spec belongs wherever your other plugin specs
+already live.
 
 ## Usage
 
-Define the operator, then bind the `<Plug>` mapping to whatever key you like:
+Wherever you put it, the shape is the same — define the operator, then bind the
+`<Plug>` mapping to whatever key you want:
 
 ```lua
 local operator = require("operator")
