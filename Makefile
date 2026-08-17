@@ -25,4 +25,8 @@ format:
 	fi
 	stylua .
 
-check: lint test
+# `smoke` is included deliberately: it is the only end-to-end proof that
+# `.` repeat still works, which is this plugin's headline behaviour. Do
+# not drop it from `check` to make the target faster — a dot-repeat
+# regression is exactly what it exists to catch (see commit ea5a5df).
+check: lint test smoke

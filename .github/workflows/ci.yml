@@ -7,6 +7,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Least privilege: every job here only reads the repository.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -43,10 +47,32 @@ jobs:
           verbose: "true"
           test-patterns: "tests/*_spec.lua"
 
+  smoke:
+    name: Smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      # smoke.lua depends only on Neovim and this repo — no plenary, no
+      # peer plugins — so a plain Neovim install is enough.
+      - name: Install Neovim
+        run: |
+          curl -sL "https://github.com/neovim/neovim/releases/download/stable/nvim-linux-x86_64.tar.gz" -o nvim.tar.gz
+          tar xzf nvim.tar.gz
+          echo "$PWD/nvim-linux-x86_64/bin" >> "$GITHUB_PATH"
+
+      - name: Verify Neovim
+        run: nvim --version | head -1
+
+      # Exits non-zero via cquit! when any assertion fails.
+      - name: Run ship-criterion smoke
+        run: make smoke
+
   validate:
     name: Validate
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: [lint, test, smoke]
     steps:
       - name: All checks passed
         run: echo "All CI checks passed."
