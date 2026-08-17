@@ -330,16 +330,26 @@ make test    # plenary-busted suite, headless
 make smoke   # end-to-end ship criterion: define, fire, press `.`, verify
 make lint    # stylua --check
 make format  # stylua
-make check   # lint + test
+make check   # lint + test + smoke
 ```
 
 `make lint` and `make format` require [StyLua](https://github.com/JohnnyMorganz/StyLua).
+There is no `stylua.toml` — the repo uses StyLua's defaults, which means tab
+indentation.
 
 ## Contributing
 
 Issues and pull requests are welcome at
 [jedi-knights/operator.nvim](https://github.com/jedi-knights/operator.nvim).
-Run `make check` before opening a PR; CI runs the same targets.
+Run `make check` before opening a PR.
+
+CI runs the same lint, specs, and smoke, though not as a literal `make check`:
+the Tests job drives the specs through the
+[neospec](https://github.com/jedi-knights/neospec) action rather than
+`make test`.
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full development loop, test
+conventions, and commit and PR expectations.
 
 ## License
 
