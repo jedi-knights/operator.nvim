@@ -207,6 +207,8 @@ The classic case for "this should have been an operator." A `:sort` range
 command works, but it doesn't compose and it doesn't repeat.
 
 ```lua
+local operator = require("operator")
+
 operator.define("sort", {
   desc = "sort lines over motion",
   callback = function(range)
@@ -228,6 +230,8 @@ Character-wise operators read the range's columns, not just its rows. Note that
 `finish.col` is *inclusive*, so add 1 when slicing.
 
 ```lua
+local operator = require("operator")
+
 operator.define("backtick", {
   desc = "wrap motion in backticks",
   callback = function(range)
@@ -258,6 +262,8 @@ text — a REPL, a search, an LLM prompt, a scratch buffer — becomes composabl
 the moment you express it as an operator.
 
 ```lua
+local operator = require("operator")
+
 operator.define("search", {
   desc = "web-search the motion text",
   callback = function(range)
