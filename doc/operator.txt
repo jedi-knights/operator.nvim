@@ -44,7 +44,7 @@ No |setup()| call is required. The API is stateless.
 
     vim.keymap.set({ "n", "x" }, "gu", "<Plug>(operator-uppercase)")
 <
-Then `guiw`, `guap`, `gU$`, visual + `gu`, and `.` (repeat) all work.
+Then `guiw`, `guap`, `gu$`, visual + `gu`, and `.` (repeat) all work.
 
 ==============================================================================
 3. API                                                           *operator-api*
