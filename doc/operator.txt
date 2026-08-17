@@ -4,28 +4,148 @@ Author:   Omar Crosby <https://github.com/ocrosby>
 License:  MIT
 
 ==============================================================================
-CONTENTS                                                    *operator-contents*
+CONTENTS                                                   *operator-contents*
 
   1. Introduction ......................... |operator-introduction|
-  2. Quick start .......................... |operator-quick-start|
-  3. API .................................. |operator-api|
-     3.1. operator.define() ............... |operator.define()|
-  4. Range object ......................... |operator-range|
-  5. Dot repeat ........................... |operator-dot-repeat|
-  6. Health ............................... |operator-health|
+  2. Installation ......................... |operator-installation|
+     2.1. lazy.nvim ....................... |operator-lazy|
+     2.2. vim.pack ........................ |operator-vim-pack|
+     2.3. Distributions ................... |operator-distributions|
+  3. Quick start .......................... |operator-quick-start|
+  4. API .................................. |operator-api|
+     4.1. operator.define() ............... |operator.define()|
+  5. Range object ......................... |operator-range|
+  6. Examples ............................. |operator-examples|
+     6.1. Sort lines ...................... |operator-example-sort|
+     6.2. Wrap in backticks ............... |operator-example-wrap|
+     6.3. Send text elsewhere ............. |operator-example-send|
+  7. Dot repeat ........................... |operator-dot-repeat|
+  8. Health ............................... |operator-health|
 
 ==============================================================================
-1. Introduction                                         *operator-introduction*
+1. Introduction                                        *operator-introduction*
 
-operator.nvim registers reusable Vim operators from Lua without hand-rolling
-the 'operatorfunc' + |g@| + `<Plug>` dance every time. It emits a `<Plug>`
-mapping for normal and visual mode; the caller binds the user-facing key so
-the plugin never claims a keystroke.
+An |operator| is a verb that waits for a motion. `d` is an operator, so are
+`y`, `c`, `gU`, and `gq`. You never learned `d`, `diw`, `dap`, and `d2j` as
+separate commands — you learned one verb and combined it with motions and
+|text-objects| you already knew. That grammar is why Vim editing scales.
 
-No |setup()| call is required. The API is stateless.
+Most plugins do not participate. They ship a command (`:SortLines`), or a
+mapping that hardcodes one scope (`<leader>s` sorts the current paragraph). To
+apply the same behavior to the next ten lines, to the inside of a function, or
+to a Visual selection, you need a second mapping, a range variant, and a
+Visual variant — and none of them repeat with |.|.
+
+Writing a real operator fixes that, but Vim makes you earn it. You must set
+'operatorfunc', return |g@| from an |:map-expression| mapping, read the |`[|
+and |`]| marks to recover the range, handle character-wise, line-wise, and
+block-wise motions, write a separate Visual-mode path, and get |.| repeat
+working without clobbering another plugin's 'operatorfunc'. That is the same
+few dozen lines of plumbing in every plugin that does it.
+
+operator.nvim is that plumbing, extracted. You write the callback that
+transforms a range and get the whole operator surface:
+>lua
+    operator.define("sort", { callback = sort_range })
+    vim.keymap.set({ "n", "x" }, "gs", "<Plug>(operator-sort)")
+<
+That definition gives you `gsip` (sort a paragraph), `gs2j` (three lines),
+`gsi{` (sort a block), `gsG` (sort to end of file), `gs` over a Visual
+selection, and |.| to repeat any of them at a new cursor position. You did not
+enumerate those — the grammar did.
+
+No `setup()` call is required. The API is stateless.
 
 ==============================================================================
-2. Quick start                                           *operator-quick-start*
+2. Installation                                        *operator-installation*
+
+Because there is no `setup()` call, your operator definitions *are* the
+configuration. They belong wherever your plugin manager runs a plugin's config
+function.
+
+------------------------------------------------------------------------------
+2.1. lazy.nvim                                                 *operator-lazy*
+
+One file per plugin under `~/.config/nvim/lua/plugins/`, picked up by the
+`{ import = "plugins" }` spec every lazy.nvim setup uses:
+>lua
+    -- ~/.config/nvim/lua/plugins/operator.lua
+    return {
+      "jedi-knights/operator.nvim",
+      config = function()
+        local operator = require("operator")
+
+        operator.define("sort", {
+          desc = "sort lines over motion",
+          callback = function(range)
+            local lines = vim.api.nvim_buf_get_lines(
+              0, range.start.row - 1, range.finish.row, false)
+            table.sort(lines)
+            vim.api.nvim_buf_set_lines(
+              0, range.start.row - 1, range.finish.row, false, lines)
+          end,
+        })
+
+        vim.keymap.set({ "n", "x" }, "gs", "<Plug>(operator-sort)",
+          { desc = "sort over motion" })
+      end,
+    }
+<
+Define as many operators as you like in that one `config` function — each call
+to |operator.define()| is independent.
+
+To keep the plugin off the startup path, add `keys`:
+>lua
+    return {
+      "jedi-knights/operator.nvim",
+      keys = { { "gs", mode = { "n", "x" }, desc = "sort over motion" } },
+      config = function()
+        -- same as above
+      end,
+    }
+<
+This works with operators, which is not obvious. lazy.nvim intercepts `gs`,
+loads the plugin, then replays the key — and the operator still waits for its
+motion afterwards, so `gsip` resolves correctly on the very first press.
+
+------------------------------------------------------------------------------
+2.2. vim.pack                                              *operator-vim-pack*
+
+Neovim 0.12+ ships |vim.pack|:
+>lua
+    -- ~/.config/nvim/init.lua
+    vim.pack.add({
+      { src = "https://github.com/jedi-knights/operator.nvim" },
+    })
+
+    require("operator").define("sort", { callback = sort_range })
+    vim.keymap.set({ "n", "x" }, "gs", "<Plug>(operator-sort)")
+<
+------------------------------------------------------------------------------
+2.3. Distributions                                    *operator-distributions*
+
+Every lazy.nvim-based distribution takes the same spec table, so the rule does
+not change: your definitions go in the spec's `config` function. Only the file
+path differs.
+
+  Plain lazy.nvim, LazyVim, AstroNvim ~
+      a new file under `~/.config/nvim/lua/plugins/`
+
+  NvChad ~
+      the returned table in `~/.config/nvim/lua/plugins/init.lua`
+
+  kickstart.nvim ~
+      inline in the `require("lazy").setup({ ... })` table in `init.lua`
+
+  No plugin manager ~
+      anywhere sourced after the plugin is on 'runtimepath'
+
+These are each distribution's conventional location for a user plugin spec. If
+yours has been customized, the spec belongs wherever your other plugin specs
+already live.
+
+==============================================================================
+3. Quick start                                          *operator-quick-start*
 >lua
     local operator = require("operator")
 
@@ -44,16 +164,27 @@ No |setup()| call is required. The API is stateless.
 
     vim.keymap.set({ "n", "x" }, "gu", "<Plug>(operator-uppercase)")
 <
-Then `guiw`, `guap`, `gu$`, visual + `gu`, and `.` (repeat) all work.
+That single definition responds to:
+
+  `guiw`      the inner word under the cursor
+  `guap`      the surrounding paragraph
+  `gu$`       cursor through end of line
+  `gu2j`      this line and the next two
+  `v}gu`      the Visual selection
+  `.`         the last motion, re-resolved at the new cursor position
+
+This callback rewrites whole lines, so it upcases every line it touches.
+Read `range.start.col` and `range.finish.col` to honor character-wise
+boundaries — see |operator-example-wrap|.
 
 ==============================================================================
-3. API                                                           *operator-api*
+4. API                                                          *operator-api*
 
 ------------------------------------------------------------------------------
-3.1. operator.define({name}, {opts})                          *operator.define()*
+4.1. operator.define({name}, {opts})                       *operator.define()*
 
 Register an operator named {name} and emit a `<Plug>(operator-{name})` mapping
-for normal and visual mode.
+for Normal and Visual mode.
 
 Parameters: ~
   {name}  (string) Unique identifier. The `<Plug>` mapping is derived
@@ -70,8 +201,11 @@ Parameters: ~
 Errors on missing {name}, empty {name}, missing {opts}, or non-function
 callback.
 
+The plugin never claims a user key. Bind the emitted `<Plug>` mapping
+yourself, so anyone using your plugin can rebind it without patching you.
+
 ==============================================================================
-4. Range object                                                *operator-range*
+5. Range object                                               *operator-range*
 
 The `callback` receives a table:
 >
@@ -82,37 +216,124 @@ The `callback` receives a table:
     }
 <
 Rows are 1-indexed to match |line()| and |nvim_win_set_cursor()|. Columns are
-0-indexed to match |col()| in operator-pending mode and the `'[` / `']` marks
-Vim sets before calling 'operatorfunc'.
+0-indexed to match |col()| in Operator-pending mode and the |`[| / |`]| marks
+Vim sets before calling 'operatorfunc'. `finish.col` is *inclusive* — add 1
+when slicing text with |nvim_buf_get_text()|.
 
 `motion_type` is Vim's own classification of the motion:
 
-  "char"   a character-wise motion, e.g. `iw`, `l`, `f)`
-  "line"   a line-wise motion, e.g. `_`, `2j`, `V`
-  "block"  a block-wise visual selection, e.g. `<C-v>` + motion
+  "char"      a character-wise motion, e.g. `iw`, `l`, `f)`
+  "line"      a line-wise motion, e.g. `_`, `2j`, `V`
+  "block"     a block-wise Visual selection, e.g. |CTRL-V| plus a motion
+
+When the operator is invoked from Visual mode, `motion_type` is instead the
+|visualmode()| character: "v", "V", or CTRL-V. Guard on both spellings when a
+callback only makes sense for one granularity.
 
 ==============================================================================
-5. Dot repeat                                             *operator-dot-repeat*
+6. Examples                                                *operator-examples*
 
-|.| re-runs the operator with the last motion on the new cursor position
-automatically. No opt-in required.
+------------------------------------------------------------------------------
+6.1. Sort lines over any motion                        *operator-example-sort*
 
-Mechanism: operator.nvim leaves 'operatorfunc' pointing at its dispatcher
-after your callback runs (rather than saving + restoring the prior value).
-Vim's built-in change-repeat looks up 'operatorfunc' and re-issues `g@<motion>`
-using the last motion — so the second invocation applies to whatever the new
-cursor position + motion resolves to.
+A `:sort` range command works, but it does not compose with motions and does
+not repeat.
+>lua
+    local operator = require("operator")
 
-vim-repeat interoperability: if the user has |tpope/vim-repeat| installed, it
-remaps |.| to its own handler. That handler falls through to native |.| when
-there is no active repeat sequence for the current changedtick, so operators
-defined via `operator.define` work correctly regardless of whether vim-repeat
-is present.
+    operator.define("sort", {
+      desc = "sort lines over motion",
+      callback = function(range)
+        local lines = vim.api.nvim_buf_get_lines(
+          0, range.start.row - 1, range.finish.row, false)
+        table.sort(lines)
+        vim.api.nvim_buf_set_lines(
+          0, range.start.row - 1, range.finish.row, false, lines)
+      end,
+    })
+
+    vim.keymap.set({ "n", "x" }, "gs", "<Plug>(operator-sort)")
+<
+`gsip` sorts a paragraph, `gsi{` sorts a block's contents, `gsG` sorts to end
+of file — and |.| sorts the next paragraph without retyping anything.
+
+------------------------------------------------------------------------------
+6.2. Wrap a character-wise motion                      *operator-example-wrap*
+
+Character-wise operators read the range's columns, not just its rows. Note the
+inclusive `finish.col`.
+>lua
+    local operator = require("operator")
+
+    operator.define("backtick", {
+      desc = "wrap motion in backticks",
+      callback = function(range)
+        -- "char" comes from a motion; "v" from character-wise Visual mode.
+        if range.motion_type ~= "char" and range.motion_type ~= "v" then
+          return
+        end
+        local sr, sc = range.start.row - 1, range.start.col
+        local er, ec = range.finish.row - 1, range.finish.col + 1
+        local text = vim.api.nvim_buf_get_text(0, sr, sc, er, ec, {})
+        text[1] = "`" .. text[1]
+        text[#text] = text[#text] .. "`"
+        vim.api.nvim_buf_set_text(0, sr, sc, er, ec, text)
+      end,
+    })
+
+    vim.keymap.set({ "n", "x" }, "gb", "<Plug>(operator-backtick)")
+<
+`gbiw` wraps a word, `gbi"` wraps a string's contents, `gbf,` wraps up to the
+next comma, and `vegb` wraps a Visual selection.
+
+------------------------------------------------------------------------------
+6.3. Send a motion's text elsewhere                    *operator-example-send*
+
+Operators need not modify the buffer. Any function that consumes a chunk of
+text — a REPL, a search, a scratch buffer — becomes composable once it is
+expressed as an operator.
+>lua
+    local operator = require("operator")
+
+    operator.define("search", {
+      desc = "web-search the motion text",
+      callback = function(range)
+        local text = vim.api.nvim_buf_get_text(
+          0,
+          range.start.row - 1, range.start.col,
+          range.finish.row - 1, range.finish.col + 1,
+          {})
+        vim.ui.open("https://duckduckgo.com/?q="
+          .. vim.uri_encode(table.concat(text, " ")))
+      end,
+    })
+
+    vim.keymap.set({ "n", "x" }, "gS", "<Plug>(operator-search)")
+<
+`gSiw` searches the word, `gSi(` searches a call's arguments, `gS$` searches
+the rest of the line.
 
 ==============================================================================
-6. Health                                                     *operator-health*
+7. Dot repeat                                            *operator-dot-repeat*
 
-Run |:checkhealth| operator. The vim-repeat probe is informational only —
-`.` repeat works with or without vim-repeat installed.
+|.| re-runs the operator with the last motion at the new cursor position
+automatically. No opt-in is required.
+
+Mechanism: operator.nvim leaves 'operatorfunc' set to its dispatcher after
+your callback runs, rather than saving and restoring the previous value. Vim's
+built-in change-repeat looks up 'operatorfunc' and re-issues `g@` with the
+last motion, so the second invocation applies to whatever the new cursor
+position and motion resolve to.
+
+vim-repeat interoperability: if tpope/vim-repeat is installed it remaps |.|
+to its own handler. That handler falls through to native |.| when there is no
+active repeat sequence for the current |b:changedtick|, so operators defined
+via |operator.define()| work correctly whether or not vim-repeat is present.
+
+==============================================================================
+8. Health                                                    *operator-health*
+
+Run `:checkhealth operator`. The vim-repeat probe is informational only — |.|
+repeat works with or without vim-repeat installed.
 
  vim:tw=78:ts=8:noet:ft=help:norl:
