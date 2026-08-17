@@ -1,19 +1,82 @@
 # operator.nvim
 
+Turn any Lua function into a real Vim operator — a verb that composes with every motion and text object you already know.
+
 [![CI](https://github.com/jedi-knights/operator.nvim/actions/workflows/ci.yml/badge.svg)](https://github.com/jedi-knights/operator.nvim/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-Define reusable Vim operators from Lua without hand-rolling the
-`operatorfunc` / `g@` / `<Plug>` boilerplate every time.
+## Table of Contents
 
-Define once, get the full operator surface for free: `guiw`, `guap`,
-`gU$`, visual + `gu`, and `.`-repeat — the same shape tpope's operator
-plugins ship with.
+- [Overview](#overview)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Examples](#examples)
+- [API](#api)
+- [Configuration](#configuration)
+- [Development](#development)
+- [Contributing](#contributing)
+- [License](#license)
 
-**Requirements:** Neovim 0.10+. No peer dependencies — native `.` re-runs the operator with the last motion on the new cursor position.
+## Overview
 
-**Status:** pre-v0.1.0. Public API is expected to stabilize with the v0.1.0 tag; treat as experimental until then.
+**An operator is a verb that waits for a motion.** `d` is an operator, so is `y`,
+`c`, `gU`, and `gq`. You never learned `d` and `diw` and `dap` and `d2j` as
+separate commands — you learned one verb and combined it with the nouns you
+already knew. That combinatorial grammar is the whole reason Vim editing scales.
 
-## Install
+Most Neovim plugins don't participate in that grammar. They ship a command
+(`:SortLines`), or a keymap that hardcodes one scope (`<leader>s` = sort the
+current paragraph). If you want the same behavior over the next 10 lines, inside
+a function, or over a visual selection, you need a second keymap, a range
+variant, and a visual variant — and none of them repeat with `.`.
+
+Writing a *real* operator fixes that, but Vim makes you earn it. You have to set
+`'operatorfunc'`, return `g@` from an `<expr>` mapping, read the `` '[ `` and `` '] ``
+marks to recover the range, handle char/line/block motion types, write a
+separate visual-mode path, and get `.`-repeat working without breaking anyone
+else's `'operatorfunc'`. That's 40 lines of fiddly plumbing that has nothing to
+do with what your plugin actually does — and it's the same 40 lines in every
+plugin that does it.
+
+operator.nvim is that plumbing, extracted. You write the callback that transforms
+a range; you get the full operator surface:
+
+```lua
+operator.define("sort", { callback = sort_range })
+vim.keymap.set({ "n", "x" }, "gs", "<Plug>(operator-sort)")
+```
+
+That one definition gives you `gsip` (sort a paragraph), `gs2j` (sort three
+lines), `gsi{` (sort a block), `gsG` (sort to end of file), `gs` over a visual
+selection, and `.` to repeat any of them at a new cursor position. You didn't
+enumerate those — the grammar did.
+
+## Features
+
+- **One definition, the whole operator surface** — every motion, every text
+  object, plus visual mode, from a single callback.
+- **Native `.`-repeat, no opt-in** — `.` re-runs your operator with the last
+  motion at the new cursor position, the same way `d` and `gU` behave.
+- **No peer dependencies** — works with or without
+  [tpope/vim-repeat](https://github.com/tpope/vim-repeat).
+- **Never claims your keys** — emits a `<Plug>` mapping; you decide the binding,
+  so your users can rebind it without patching your plugin.
+- **Stateless API** — no `setup()` call, no global config, no load-order concerns.
+- **Motion type passed through** — your callback sees `"char"`, `"line"`, or
+  `"block"` and can behave differently for each.
+
+## Requirements
+
+- Neovim 0.10+
+- No peer dependencies. [tpope/vim-repeat](https://github.com/tpope/vim-repeat)
+  is supported but not needed — `.` works either way.
+
+**Status:** pre-v0.1.0. The public API is expected to stabilize with the v0.1.0
+tag; treat it as experimental until then.
+
+## Installation
 
 ```lua
 -- lazy.nvim
@@ -23,6 +86,8 @@ plugins ship with.
 No `setup()` call required — the API is stateless.
 
 ## Usage
+
+Define the operator, then bind the `<Plug>` mapping to whatever key you like:
 
 ```lua
 local operator = require("operator")
@@ -44,22 +109,158 @@ operator.define("uppercase", {
 vim.keymap.set({ "n", "x" }, "gu", "<Plug>(operator-uppercase)")
 ```
 
-Then `guiw`, `guap`, `gU$`, visual + `gu`, and `.` (repeat) all work.
+That single definition now responds to:
+
+| Keys | Range the callback receives |
+|---|---|
+| `guiw` | the inner word under the cursor |
+| `guap` | the surrounding paragraph |
+| `gu$` | cursor through end of line |
+| `gu2j` | this line and the next two |
+| `v}gu` | the visual selection |
+| `.` | the last motion, re-resolved at the cursor's new position |
+
+This particular callback rewrites whole lines, so it upcases every line the range
+touches. Read `range.start.col` / `range.finish.col` when you want to honor
+character-wise boundaries — see the backtick example below.
+
+## Examples
+
+Every example below is verified end-to-end against a real headless Neovim.
+
+### Sort lines over any motion
+
+The classic case for "this should have been an operator." A `:sort` range
+command works, but it doesn't compose and it doesn't repeat.
+
+```lua
+operator.define("sort", {
+  desc = "sort lines over motion",
+  callback = function(range)
+    local lines = vim.api.nvim_buf_get_lines(0, range.start.row - 1, range.finish.row, false)
+    table.sort(lines)
+    vim.api.nvim_buf_set_lines(0, range.start.row - 1, range.finish.row, false, lines)
+  end,
+})
+
+vim.keymap.set({ "n", "x" }, "gs", "<Plug>(operator-sort)")
+```
+
+`gsip` sorts a paragraph, `gsi{` sorts a block's contents, `gsG` sorts to end of
+file — and `.` sorts the next paragraph without re-typing anything.
+
+### Wrap a charwise motion in backticks
+
+Character-wise operators read the range's columns, not just its rows. Note that
+`finish.col` is *inclusive*, so add 1 when slicing.
+
+```lua
+operator.define("backtick", {
+  desc = "wrap motion in backticks",
+  callback = function(range)
+    -- "char" comes from a motion; "v" comes from charwise visual mode.
+    if range.motion_type ~= "char" and range.motion_type ~= "v" then
+      return
+    end
+    local sr, sc = range.start.row - 1, range.start.col
+    local er, ec = range.finish.row - 1, range.finish.col + 1
+    local text = vim.api.nvim_buf_get_text(0, sr, sc, er, ec, {})
+    text[1] = "`" .. text[1]
+    text[#text] = text[#text] .. "`"
+    vim.api.nvim_buf_set_text(0, sr, sc, er, ec, text)
+  end,
+})
+
+vim.keymap.set({ "n", "x" }, "gb", "<Plug>(operator-backtick)")
+```
+
+`gbiw` wraps a word, `gbi"` wraps a string's contents, `gbf,` wraps up to the
+next comma, `vegb` wraps a visual selection. Pressing `.` on the next identifier
+wraps that one too.
+
+### Send a motion's text somewhere else
+
+Operators don't have to modify the buffer. Any function that consumes a chunk of
+text — a REPL, a search, an LLM prompt, a scratch buffer — becomes composable
+the moment you express it as an operator.
+
+```lua
+operator.define("search", {
+  desc = "web-search the motion text",
+  callback = function(range)
+    local text = vim.api.nvim_buf_get_text(
+      0,
+      range.start.row - 1, range.start.col,
+      range.finish.row - 1, range.finish.col + 1,
+      {}
+    )
+    vim.ui.open("https://duckduckgo.com/?q=" .. vim.uri_encode(table.concat(text, " ")))
+  end,
+})
+
+vim.keymap.set({ "n", "x" }, "gS", "<Plug>(operator-search)")
+```
+
+`gSiw` searches the word, `gSi(` searches the call's arguments, `gS$` searches
+the rest of the line.
 
 ## API
 
 ### `operator.define(name, opts)`
 
+Registers an operator and emits `<Plug>(operator-<name>)` for normal and visual
+mode. Call it as many times as you like; the API is stateless.
+
 - `name` (string) — unique identifier; becomes `<Plug>(operator-<name>)`.
 - `opts.callback` (function) — receives a `range` table:
-  - `motion_type` — `"char"`, `"line"`, `"block"` (or a `visualmode()` char when triggered from visual).
-  - `start`, `finish` — `{ row, col }`. `row` is 1-indexed, `col` is 0-indexed.
-- `opts.desc` (string, optional) — mapping description.
+  - `motion_type` — `"char"`, `"line"`, or `"block"` when invoked from a motion;
+    a `visualmode()` char (`"v"`, `"V"`, `"\22"`) when invoked from visual mode.
+  - `start`, `finish` — `{ row, col }`. `row` is 1-indexed (matches `line()`),
+    `col` is 0-indexed and `finish.col` is inclusive (matches the `` '[ `` /
+    `` '] `` marks Vim sets before calling `'operatorfunc'`).
+- `opts.desc` (string, optional) — mapping description, shown by `maparg()` and
+  which-key-style UIs. Defaults to `"operator: <name>"`.
 
-`.` re-runs the operator with the last motion on the new cursor
-position automatically — the plugin leaves `operatorfunc` pointing at
-its dispatcher, which is what Vim's built-in change-repeat mechanism
-looks up. No `dot_repeat` opt-in required.
+Errors on a missing or empty `name`, missing `opts`, or a non-function callback.
+
+### Dot repeat
+
+`.` re-runs the operator with the last motion at the new cursor position
+automatically — no `dot_repeat` opt-in. operator.nvim leaves `'operatorfunc'`
+pointing at its dispatcher, which is exactly what Vim's built-in change-repeat
+mechanism looks up. If vim-repeat is installed, its `.` remap falls through to
+native `.` when no repeat sequence is active for the current changedtick, so
+behavior is identical either way.
+
+### Health
+
+Run `:checkhealth operator` to confirm the plugin loaded. The vim-repeat probe
+in that report is informational only.
+
+Full reference: `:help operator`.
+
+## Configuration
+
+N/A — there is nothing to configure. `operator.define` takes everything it needs
+per call, and no `setup()` is required.
+
+## Development
+
+```bash
+make test    # plenary-busted suite, headless
+make smoke   # end-to-end ship criterion: define, fire, press `.`, verify
+make lint    # stylua --check
+make format  # stylua
+make check   # lint + test
+```
+
+`make lint` and `make format` require [StyLua](https://github.com/JohnnyMorganz/StyLua).
+
+## Contributing
+
+Issues and pull requests are welcome at
+[jedi-knights/operator.nvim](https://github.com/jedi-knights/operator.nvim).
+Run `make check` before opening a PR; CI runs the same targets.
 
 ## License
 
